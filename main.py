@@ -93,7 +93,6 @@ if "__main__" in __name__:
         print('=' * 40)
 
     if args.FP16:
-        # k = 0
         if args.with_timeline: timeline_name = "FP16Timeline.json"
         timings, comp, valfp16, mdstats = timeGraph(
             getFP16(frozen_graph_file, batch_size, wsize),
