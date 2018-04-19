@@ -88,6 +88,7 @@ if "__main__" in __name__:
             dummy_input,
             timeline_name)
         print('=' * 40)
+        print('mdstats: ' + str(mdstats))
         printStats("TRT-FP32", timings, batch_size)
         printStats("TRT-FP32RS", mdstats, batch_size)
         print('=' * 40)
@@ -101,6 +102,7 @@ if "__main__" in __name__:
             dummy_input,
             timeline_name)
         print('=' * 40)
+        print('mdstats: ' + str(mdstats))
         printStats("TRT-FP16", timings, batch_size)
         printStats("TRT-FP16RS", mdstats, batch_size)
         print('=' * 40)
@@ -117,6 +119,7 @@ if "__main__" in __name__:
         timings, comp, valint8, mdstats = timeGraph(int8Graph, batch_size,
                                                     args.num_loops, dummy_input, timeline_name)
         print('=' * 40)
+        print('mdstats: ' + str(mdstats))
         printStats("TRT-INT8", timings, batch_size)
         printStats("TRT-INT8RS", mdstats, batch_size)
         print('=' * 40)
