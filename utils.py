@@ -29,7 +29,7 @@ from tensorflow.python.client import timeline
 import argparse, sys, itertools, datetime
 import json
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # selects a specific device
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # selects a specific device
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
@@ -114,8 +114,6 @@ def printStats(graph_name, timings, batch_size):
     std_speed = np.std(speeds)
 
     print('Results:')
-    # print("images/sec: %.1f +/- %.1f, sec/batch: %.5f +/- %.5f" % (avg_speed, std_speed, avg_time, std_time))
-    # print("RES, %s, %s, %.2f, %.2f, %.5f, %.5f" % (graphName, batch_size, avg_speed, std_speed, avg_time, std_time))
     print('Graph Name: %s' % graph_name)
     print('Batch Size: %d' % batch_size)
     print('Avg Speed: %.2f +/- %.2f (images/sec)' % (avg_speed, std_speed))
@@ -229,11 +227,11 @@ def timeGraph(gdef, batch_size, num_loops, dummy_input=None, timeline_file=None)
             tstart = time.time()
             for k in range(num_iters):
                 val = sess.run(outlist)
+            # print([max(val[0][i]) for i in range(4)])
             timings.append((time.time() - tstart) / float(num_iters))
             print('iter %2d: %.6f s' % (i + 1, timings[-1]))
-            # print("iter ", i, " ", timings[-1])
         comp = sess.run(tf.reduce_all(tf.equal(val[0], valt[0])))
-        print("Comparison =", comp)
+        print("Comparison = %s" % comp)
         sess.close()
         tf.logging.info("Timing loop done!")
         return timings, comp, val[0], None

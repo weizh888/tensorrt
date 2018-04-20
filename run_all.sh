@@ -13,4 +13,5 @@ python3 main.py --native --FP32 --FP16 --INT8 \
                         --output_node resnet_v1_50/predictions/Reshape_1 \
                         --image_size 224 \
                         --image_file grace_hopper.jpg \
-                        --with_timeline
+                        --with_timeline \
+                        --cuda_device 0

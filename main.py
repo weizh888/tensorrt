@@ -12,7 +12,7 @@ import json
 import os
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # selects a specific device
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # selects a specific device
 
 if "__main__" in __name__:
     parser = argparse.ArgumentParser(prog="test")
@@ -23,7 +23,8 @@ if "__main__" in __name__:
     parser.add_argument('--dump_diff', action='store_true')
     parser.add_argument('--with_timeline', action='store_true')
     parser.add_argument('--update_graphdef', action='store_true')
-
+    parser.add_argument('--cuda_device', type=int, default=0)
+    
     parser.add_argument('--image_size', type=int, default=224)
     parser.add_argument('--input_node', type=str, default='input')
     parser.add_argument('--output_node', type=str, default='resnet_v1_50/predictions/Reshape_1')
@@ -35,6 +36,8 @@ if "__main__" in __name__:
     args, unparsed = parser.parse_known_args()
     print(args)
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda_device)  # selects a specific device
+    
     frozen_graph_file = 'resnet_v1_50_frozen.pb'
     # Although networks can use NHWC and NCHW, TensorFlow users are encouraged to
     # convert their networks to use NCHW data ordering explicitly
@@ -74,7 +77,7 @@ if "__main__" in __name__:
     workspace_size = args.workspace_size << 20
     timeline_file = None
     if args.native:
-        if args.with_timeline: timeline_file = "NativeTimeline.json"
+        if args.with_timeline: timeline_file = "timeline/NativeTimeline.json"
         timings, comp, valnative, mdstats = timeGraph(
             getResnet50(frozen_graph_file),
             batch_size,
@@ -88,7 +91,7 @@ if "__main__" in __name__:
         print('=' * 40)
 
     if args.FP32:
-        if args.with_timeline: timeline_file = "FP32Timeline.json"
+        if args.with_timeline: timeline_file = "timeline/FP32Timeline.json"
         timings, comp, valfp32, mdstats = timeGraph(
             getFP32(frozen_graph_file, batch_size, workspace_size),
             batch_size,
@@ -102,7 +105,7 @@ if "__main__" in __name__:
         print('=' * 40)
 
     if args.FP16:
-        if args.with_timeline: timeline_file = "FP16Timeline.json"
+        if args.with_timeline: timeline_file = "timeline/FP16Timeline.json"
         timings, comp, valfp16, mdstats = timeGraph(
             getFP16(frozen_graph_file, batch_size, workspace_size),
             batch_size,
@@ -127,7 +130,7 @@ if "__main__" in __name__:
         print("Creating inference graph")
         int8Graph = getINT8InferenceGraph(calibGraph)
         del calibGraph
-        if args.with_timeline: timeline_file = "INT8Timeline.json"
+        if args.with_timeline: timeline_file = "timeline/INT8Timeline.json"
         timings, comp, valint8, mdstats = timeGraph(
             int8Graph,
             batch_size,
