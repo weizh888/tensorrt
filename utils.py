@@ -28,6 +28,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.client import timeline
 import argparse, sys, itertools, datetime
 import json
+import logging
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # selects a specific device
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -96,11 +97,32 @@ def updateGraphDef(filename):
             f.write(g.as_graph_def().SerializeToString())
 
 
-def getResnet50(filename):
+def get_GraphDef(filename):
     with gfile.FastGFile(filename, 'rb') as f:
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(f.read())
     return graph_def
+
+
+def get_trt_graph(filename, batch_size, workspace_size, precision, output_pb):
+    print('Start to optimize graph')
+    trt_graph = trt.create_inference_graph(
+        get_GraphDef(filename),
+        ["resnet_v1_50/predictions/Reshape_1"],
+        max_batch_size=batch_size,
+        max_workspace_size_bytes=workspace_size,
+        precision_mode=precision)  # Get optimized graph
+
+    with gfile.FastGFile(output_pb, 'wb') as f:
+        f.write(trt_graph.SerializeToString())
+    return trt_graph
+
+
+def get_int8_infer_graph(calib_graph, output_pb):
+    trt_graph = trt.calib_graph_to_infer_graph(calib_graph)
+    with gfile.FastGFile(output_pb, 'wb') as f:
+        f.write(trt_graph.SerializeToString())
+    return trt_graph
 
 
 def printStats(graph_name, timings, batch_size):
@@ -118,42 +140,6 @@ def printStats(graph_name, timings, batch_size):
     print('Batch Size: %d' % batch_size)
     print('Avg Speed: %.2f +/- %.2f (images/sec)' % (avg_speed, std_speed))
     print('Avg Time: %.5f +/- %.5f (sec/batch)' % (avg_time, std_time))
-
-def getFP32(filename, batch_size=128, workspace_size=1 << 30):
-    trt_graph = trt.create_inference_graph(getResnet50(filename), ["resnet_v1_50/predictions/Reshape_1"],
-                                           max_batch_size=batch_size,
-                                           max_workspace_size_bytes=workspace_size,
-                                           precision_mode="FP32")  # Get optimized graph
-    with gfile.FastGFile("resnetV150_TRTFP32.pb", 'wb') as f:
-        f.write(trt_graph.SerializeToString())
-    return trt_graph
-
-
-def getFP16(filename, batch_size=128, workspace_size=1 << 30):
-    trt_graph = trt.create_inference_graph(getResnet50(filename), ["resnet_v1_50/predictions/Reshape_1"],
-                                           max_batch_size=batch_size,
-                                           max_workspace_size_bytes=workspace_size,
-                                           precision_mode="FP16")  # Get optimized graph
-    with gfile.FastGFile("resnetV150_TRTFP16.pb", 'wb') as f:
-        f.write(trt_graph.SerializeToString())
-    return trt_graph
-
-
-def getINT8CalibGraph(filename, batch_size=128, workspace_size=1 << 30):
-    trt_graph = trt.create_inference_graph(getResnet50(filename), ["resnet_v1_50/predictions/Reshape_1"],
-                                           max_batch_size=batch_size,
-                                           max_workspace_size_bytes=workspace_size,
-                                           precision_mode="INT8")  # calibration
-    with gfile.FastGFile("resnetV150_TRTINT8Calib.pb", 'wb') as f:
-        f.write(trt_graph.SerializeToString())
-    return trt_graph
-
-
-def getINT8InferenceGraph(calibGraph):
-    trt_graph = trt.calib_graph_to_infer_graph(calibGraph)
-    with gfile.FastGFile("resnetV150_TRTINT8.pb", 'wb') as f:
-        f.write(trt_graph.SerializeToString())
-    return trt_graph
 
 
 def timeGraph(gdef, batch_size, num_loops, dummy_input=None, timeline_file=None):

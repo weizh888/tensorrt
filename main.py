@@ -77,9 +77,9 @@ if "__main__" in __name__:
     workspace_size = args.workspace_size << 20
     timeline_file = None
     if args.native:
-        if args.with_timeline: timeline_file = "timeline/NativeTimeline.json"
+        if args.with_timeline: timeline_file = "timeline/Timeline_Native.json"
         timings, comp, valnative, mdstats = timeGraph(
-            getResnet50(frozen_graph_file),
+            get_GraphDef(frozen_graph_file),
             batch_size,
             num_loops,
             dummy_input,
@@ -90,10 +90,17 @@ if "__main__" in __name__:
         printStats("NativeRS", mdstats, batch_size)
         print('=' * 40)
 
+    model_name = 'resnet_v1_50'
     if args.FP32:
-        if args.with_timeline: timeline_file = "timeline/FP32Timeline.json"
+        precision = 'FP32'
+        if args.with_timeline:
+            timeline_file = "timeline/Timeline_" + precision + ".json"
+
+        output_pb = model_name + '_' + precision + '.pb'
+        trt_graph = get_trt_graph(frozen_graph_file, batch_size, workspace_size, precision, output_pb)
+
         timings, comp, valfp32, mdstats = timeGraph(
-            getFP32(frozen_graph_file, batch_size, workspace_size),
+            trt_graph,
             batch_size,
             num_loops,
             dummy_input,
@@ -105,9 +112,15 @@ if "__main__" in __name__:
         print('=' * 40)
 
     if args.FP16:
-        if args.with_timeline: timeline_file = "timeline/FP16Timeline.json"
+        precision = 'FP16'
+        if args.with_timeline:
+            timeline_file = "timeline/Timeline_" + precision + ".json"
+
+        output_pb = model_name + '_' + precision + '.pb'
+        trt_graph = get_trt_graph(frozen_graph_file, batch_size, workspace_size, precision, output_pb)
+
         timings, comp, valfp16, mdstats = timeGraph(
-            getFP16(frozen_graph_file, batch_size, workspace_size),
+            trt_graph,
             batch_size,
             num_loops,
             dummy_input,
@@ -119,20 +132,28 @@ if "__main__" in __name__:
         print('=' * 40)
 
     if args.INT8:
-        calibGraph = getINT8CalibGraph(frozen_graph_file, batch_size, workspace_size)
+        precision = 'INT8'
+        output_pb = model_name + '_' + precision + 'Calib.pb'
+        int8_calib_graph = get_trt_graph(frozen_graph_file, batch_size, workspace_size, precision, output_pb)
+
         print("Running Calibration")
         timings, comp, _, mdstats = timeGraph(
-            calibGraph,
+            int8_calib_graph,
             batch_size,
             1,
             dummy_input)
         print('=' * 40)
         print("Creating inference graph")
-        int8Graph = getINT8InferenceGraph(calibGraph)
-        del calibGraph
-        if args.with_timeline: timeline_file = "timeline/INT8Timeline.json"
+
+        output_pb = model_name + '_' + precision + '.pb'
+        int8_infer_graph = get_int8_infer_graph(int8_calib_graph, output_pb)
+
+        del int8_calib_graph
+
+        if args.with_timeline:
+            timeline_file = "timeline/Timeline_" + precision + ".json"
         timings, comp, valint8, mdstats = timeGraph(
-            int8Graph,
+            int8_infer_graph,
             batch_size,
             num_loops,
             dummy_input,
@@ -142,11 +163,13 @@ if "__main__" in __name__:
         printStats("TRT-INT8", timings, batch_size)
         printStats("TRT-INT8RS", mdstats, batch_size)
         print('=' * 40)
+
     vals = [valnative, valfp32, valfp16, valint8]
     enabled = [(args.native, "native", valnative),
                (args.FP32, "FP32", valfp32),
                (args.FP16, "FP16", valfp16),
                (args.INT8, "INT8", valint8)]
+    # print(enabled)
     print("Done timing", datetime.datetime.now())
     for i in enabled:
         if i[0]:
