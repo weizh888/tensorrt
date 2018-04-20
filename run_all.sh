@@ -12,4 +12,5 @@ python3 main.py --native --FP32 --FP16 --INT8 \
                         --input_node input \
                         --output_node resnet_v1_50/predictions/Reshape_1 \
                         --image_size 224 \
-                        --image_file grace_hopper.jpg
+                        --image_file grace_hopper.jpg \
+                        --with_timeline
