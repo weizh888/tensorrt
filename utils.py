@@ -180,7 +180,7 @@ def timeGraph(gdef, batch_size, num_loops, dummy_input=None, timeline_file=None)
             input_map={"input": next_element},
             return_elements=["resnet_v1_50/predictions/Reshape_1"]
         )
-        print(out)
+        print(out[0])
         out = out[0].outputs[0]
         outlist.append(out)
 
