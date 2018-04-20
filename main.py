@@ -25,7 +25,8 @@ if "__main__" in __name__:
     parser.add_argument('--update_graphdef', action='store_true')
 
     parser.add_argument('--image_size', type=int, default=224)
-    parser.add_argument('--output_name', type=str, default='resnet_v1_50/predictions/Reshape_1')
+    parser.add_argument('--input_node', type=str, default='input')
+    parser.add_argument('--output_node', type=str, default='resnet_v1_50/predictions/Reshape_1')
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--workspace_size', type=int, default=1 << 10, help="workspace size in MB")
     parser.add_argument('--num_loops', type=int, default=20)
@@ -34,8 +35,8 @@ if "__main__" in __name__:
     args, unparsed = parser.parse_known_args()
     print(args)
 
-    frozen_graph_file = 'resnetV150_frozen.pb'
-    # although networks can use NHWC and NCHW, TensorFlow users are encouraged to
+    frozen_graph_file = 'resnet_v1_50_frozen.pb'
+    # Although networks can use NHWC and NCHW, TensorFlow users are encouraged to
     # convert their networks to use NCHW data ordering explicitly
     # in order to achieve the best possible performance.
     # TensorRT's C++ API input and output tensors are in NCHW format.
@@ -43,6 +44,9 @@ if "__main__" in __name__:
     input_height = args.image_size
     input_width = args.image_size
     input_channel = 3
+    input_node = args.input_node
+    output_node = args.output_node
+    num_loops = args.num_loops
 
     valnative = None
     valfp32 = None
@@ -52,13 +56,13 @@ if "__main__" in __name__:
     print("Starting at", datetime.datetime.now())
     if args.update_graphdef:
         updateGraphDef(frozen_graph_file)
-    dummy_input = np.random.random_sample((batch_size, input_height, input_width, input_channel))
+    dummy_input = np.random.random_sample((batch_size, 224, 224, 3))
 
     with open("labellist.json", "r") as lf:
         labels = json.load(lf)
 
-    image_name = "grace_hopper.jpg"
-    t = read_tensor_from_image_file(image_name,
+    image_file = "grace_hopper.jpg"
+    t = read_tensor_from_image_file(image_file,
                                     input_height=input_height,
                                     input_width=input_width,
                                     input_mean=0,
@@ -67,26 +71,30 @@ if "__main__" in __name__:
     tshape[0] = batch_size
     tnhwcbatch = np.tile(t[0], (batch_size, 1, 1, 1))
     dummy_input = tnhwcbatch
-    wsize = args.workspace_size << 20
-    timeline_name = None
+    workspace_size = args.workspace_size << 20
+    timeline_file = None
     if args.native:
-        if args.with_timeline: timeline_name = "NativeTimeline.json"
-        timings, comp, valnative, mdstats = timeGraph(getResnet50(frozen_graph_file), batch_size,
-                                                      args.num_loops, dummy_input, timeline_name)
-        print('='*40)
+        if args.with_timeline: timeline_file = "NativeTimeline.json"
+        timings, comp, valnative, mdstats = timeGraph(
+            getResnet50(frozen_graph_file),
+            batch_size,
+            num_loops,
+            dummy_input,
+            timeline_file)
+        print('=' * 40)
         print('mdstats: ' + str(mdstats))
         printStats("Native", timings, batch_size)
         printStats("NativeRS", mdstats, batch_size)
         print('=' * 40)
 
     if args.FP32:
-        if args.with_timeline: timeline_name = "FP32Timeline.json"
+        if args.with_timeline: timeline_file = "FP32Timeline.json"
         timings, comp, valfp32, mdstats = timeGraph(
-            getFP32(frozen_graph_file, batch_size, wsize),
+            getFP32(frozen_graph_file, batch_size, workspace_size),
             batch_size,
-            args.num_loops,
+            num_loops,
             dummy_input,
-            timeline_name)
+            timeline_file)
         print('=' * 40)
         print('mdstats: ' + str(mdstats))
         printStats("TRT-FP32", timings, batch_size)
@@ -94,13 +102,13 @@ if "__main__" in __name__:
         print('=' * 40)
 
     if args.FP16:
-        if args.with_timeline: timeline_name = "FP16Timeline.json"
+        if args.with_timeline: timeline_file = "FP16Timeline.json"
         timings, comp, valfp16, mdstats = timeGraph(
-            getFP16(frozen_graph_file, batch_size, wsize),
+            getFP16(frozen_graph_file, batch_size, workspace_size),
             batch_size,
-            args.num_loops,
+            num_loops,
             dummy_input,
-            timeline_name)
+            timeline_file)
         print('=' * 40)
         print('mdstats: ' + str(mdstats))
         printStats("TRT-FP16", timings, batch_size)
@@ -108,16 +116,24 @@ if "__main__" in __name__:
         print('=' * 40)
 
     if args.INT8:
-        calibGraph = getINT8CalibGraph(frozen_graph_file, batch_size, wsize)
+        calibGraph = getINT8CalibGraph(frozen_graph_file, batch_size, workspace_size)
         print("Running Calibration")
-        timings, comp, _, mdstats = timeGraph(calibGraph, batch_size, 1, dummy_input)
+        timings, comp, _, mdstats = timeGraph(
+            calibGraph,
+            batch_size,
+            1,
+            dummy_input)
         print('=' * 40)
         print("Creating inference graph")
         int8Graph = getINT8InferenceGraph(calibGraph)
         del calibGraph
-        if args.with_timeline: timeline_name = "INT8Timeline.json"
-        timings, comp, valint8, mdstats = timeGraph(int8Graph, batch_size,
-                                                    args.num_loops, dummy_input, timeline_name)
+        if args.with_timeline: timeline_file = "INT8Timeline.json"
+        timings, comp, valint8, mdstats = timeGraph(
+            int8Graph,
+            batch_size,
+            num_loops,
+            dummy_input,
+            timeline_file)
         print('=' * 40)
         print('mdstats: ' + str(mdstats))
         printStats("TRT-INT8", timings, batch_size)

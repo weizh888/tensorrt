@@ -33,12 +33,12 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # selects a specific device
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
-def read_tensor_from_image_file(file_name, input_height, input_width,
+def read_tensor_from_image_file(filename, input_height, input_width,
                                 input_mean, input_std):
     """ Read a jpg image file and return a tensor """
     input_name = "file_reader"
     output_name = "normalized"
-    file_reader = tf.read_file(file_name, input_name)
+    file_reader = tf.read_file(filename, input_name)
     image_reader = tf.image.decode_png(file_reader, channels=3,
                                        name='jpg_reader')
     float_caster = tf.cast(image_reader, tf.float32)
@@ -51,6 +51,7 @@ def read_tensor_from_image_file(file_name, input_height, input_width,
     # sess = tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.7)))
     sess = tf.Session(config=config)
 
+    # Convert NHWC to NCHW
     result = sess.run([normalized, tf.transpose(normalized, perm=(0, 3, 1, 2))])
     del sess
 
@@ -83,20 +84,20 @@ def getSimpleGraphDef():
     return g.as_graph_def()
 
 
-def updateGraphDef(fileName):
-    with gfile.FastGFile(fileName, 'rb') as f:
+def updateGraphDef(filename):
+    with gfile.FastGFile(filename, 'rb') as f:
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(f.read())
     tf.reset_default_graph()
     g = tf.Graph()
     with g.as_default():
         tf.import_graph_def(graph_def, name="")
-        with gfile.FastGFile(fileName, 'wb') as f:
+        with gfile.FastGFile(filename, 'wb') as f:
             f.write(g.as_graph_def().SerializeToString())
 
 
-def getResnet50(frozen_graph_file):
-    with gfile.FastGFile(frozen_graph_file, 'rb') as f:
+def getResnet50(filename):
+    with gfile.FastGFile(filename, 'rb') as f:
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(f.read())
     return graph_def
@@ -120,8 +121,8 @@ def printStats(graph_name, timings, batch_size):
     print('Avg Speed: %.2f +/- %.2f (images/sec)' % (avg_speed, std_speed))
     print('Avg Time: %.5f +/- %.5f (sec/batch)' % (avg_time, std_time))
 
-def getFP32(frozen_graph_file, batch_size=128, workspace_size=1 << 30):
-    trt_graph = trt.create_inference_graph(getResnet50(frozen_graph_file), ["resnet_v1_50/predictions/Reshape_1"],
+def getFP32(filename, batch_size=128, workspace_size=1 << 30):
+    trt_graph = trt.create_inference_graph(getResnet50(filename), ["resnet_v1_50/predictions/Reshape_1"],
                                            max_batch_size=batch_size,
                                            max_workspace_size_bytes=workspace_size,
                                            precision_mode="FP32")  # Get optimized graph
@@ -130,8 +131,8 @@ def getFP32(frozen_graph_file, batch_size=128, workspace_size=1 << 30):
     return trt_graph
 
 
-def getFP16(frozen_graph_file, batch_size=128, workspace_size=1 << 30):
-    trt_graph = trt.create_inference_graph(getResnet50(frozen_graph_file), ["resnet_v1_50/predictions/Reshape_1"],
+def getFP16(filename, batch_size=128, workspace_size=1 << 30):
+    trt_graph = trt.create_inference_graph(getResnet50(filename), ["resnet_v1_50/predictions/Reshape_1"],
                                            max_batch_size=batch_size,
                                            max_workspace_size_bytes=workspace_size,
                                            precision_mode="FP16")  # Get optimized graph
@@ -140,8 +141,8 @@ def getFP16(frozen_graph_file, batch_size=128, workspace_size=1 << 30):
     return trt_graph
 
 
-def getINT8CalibGraph(frozen_graph_file, batch_size=128, workspace_size=1 << 30):
-    trt_graph = trt.create_inference_graph(getResnet50(frozen_graph_file), ["resnet_v1_50/predictions/Reshape_1"],
+def getINT8CalibGraph(filename, batch_size=128, workspace_size=1 << 30):
+    trt_graph = trt.create_inference_graph(getResnet50(filename), ["resnet_v1_50/predictions/Reshape_1"],
                                            max_batch_size=batch_size,
                                            max_workspace_size_bytes=workspace_size,
                                            precision_mode="INT8")  # calibration
@@ -157,10 +158,9 @@ def getINT8InferenceGraph(calibGraph):
     return trt_graph
 
 
-def timeGraph(gdef, batch_size=128, num_loops=100, dummy_input=None, timelineName=None):
+def timeGraph(gdef, batch_size, num_loops, dummy_input=None, timeline_file=None):
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.5
-
 
     tf.logging.info("Starting execution")
     # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.50)
@@ -180,6 +180,7 @@ def timeGraph(gdef, batch_size=128, num_loops=100, dummy_input=None, timelineNam
             input_map={"input": next_element},
             return_elements=["resnet_v1_50/predictions/Reshape_1"]
         )
+        print(out)
         out = out[0].outputs[0]
         outlist.append(out)
 
@@ -207,9 +208,9 @@ def timeGraph(gdef, batch_size=128, num_loops=100, dummy_input=None, timelineNam
             return json.dumps(Gtf, indent=2)
 
         rmArr = [[tf.RunMetadata(), 0] for x in range(20)]
-        if timelineName:
-            if gfile.Exists(timelineName):
-                gfile.Remove(timelineName)
+        if timeline_file:
+            if gfile.Exists(timeline_file):
+                gfile.Remove(timeline_file)
             ttot = int(0)
             tend = time.time()
             for i in range(20):
@@ -217,7 +218,7 @@ def timeGraph(gdef, batch_size=128, num_loops=100, dummy_input=None, timelineNam
                 valt = sess.run(outlist, options=run_options, run_metadata=rmArr[i][0])
                 tend = time.time()
                 rmArr[i][1] = (int(tstart * 1.e6), int(tend * 1.e6))
-            with gfile.FastGFile(timelineName, "a") as tlf:
+            with gfile.FastGFile(timeline_file, "a") as tlf:
                 tlf.write(mergeTraceStr(rmArr))
         else:
             for i in range(20):
