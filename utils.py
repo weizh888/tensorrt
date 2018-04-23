@@ -30,8 +30,8 @@ import argparse, sys, itertools, datetime
 import json
 import logging
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # selects a specific device
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # selects a specific device
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 def read_tensor_from_image_file(filename, input_height, input_width,
@@ -147,7 +147,6 @@ def timeGraph(gdef, batch_size, num_loops, dummy_input=None, timeline_file=None)
     config.gpu_options.per_process_gpu_memory_fraction = 0.5
 
     tf.logging.info("Starting execution")
-    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.50)
     tf.reset_default_graph()
     g = tf.Graph()
     if dummy_input is None:
@@ -169,7 +168,6 @@ def timeGraph(gdef, batch_size, num_loops, dummy_input=None, timeline_file=None)
 
     timings = []
 
-    # with tf.Session(graph=g, config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     with tf.Session(graph=g, config=config) as sess:
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
@@ -254,3 +252,10 @@ def howClose(arr1, arr2, X):
 
 def getLabels(labels, ids):
     return [labels[str(x + 1)] for x in ids]
+
+
+def make_dir(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+        print("Created folder: %s" % directory)
+        
